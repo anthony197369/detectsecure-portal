@@ -76,7 +76,41 @@ app.get("/api/verify", async (req, res) => {
     id,
   });
 });
+app.get("/verify", (req, res) => {
+  res.setHeader("Content-Type", "text/html");
+  res.send(`
+    <!doctype html>
+    <html>
+      <head>
+        <meta name="viewport" content="width=device-width, initial-scale=1" />
+        <title>DetectSecure ID Check</title>
+        <style>
+          body{font-family:Arial;padding:40px;text-align:center}
+          input{padding:12px;font-size:18px;width:220px}
+          button{padding:12px 20px;font-size:18px;margin-left:10px}
+          #out{margin-top:20px;font-size:20px}
+        </style>
+      </head>
+      <body>
+        <h2>Check DetectSecure ID</h2>
+        <input id="id" placeholder="DS-10482"/>
+        <button onclick="go()">Check</button>
+        <div id="out"></div>
 
+        <script>
+          async function go(){
+            const id=document.getElementById("id").value.trim();
+            if(!id) return;
+            const r=await fetch("/api/verify?id="+encodeURIComponent(id));
+            const j=await r.json();
+            document.getElementById("out").innerHTML =
+              j.registered ? "✅ Registered" : "❌ Not Found";
+          }
+        </script>
+      </body>
+    </html>
+  `);
+});
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => console.log("Server running on port " + PORT));
 
