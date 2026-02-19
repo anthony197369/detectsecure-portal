@@ -7,8 +7,11 @@ app.use(cors());
 app.use(express.json());
 
 // ✅ Don’t crash the server if env vars are missing
-const SUPABASE_URL = process.env.SUPABASE_URL;
-const SUPABASE_ANON_KEY = process.env.SUPABASE_ANON_KEY;
+const SUPABASE_URL =
+  process.env.SUPABASE_URL || "https://hzxivuuwqgmeiesvvrny.supabase.co";
+
+const SUPABASE_ANON_KEY =
+  process.env.SUPABASE_ANON_KEY || "sb_publishable_PES5RNt9Zt9r6af-r7j47g_dMds_iAd";
 
 let supabase = null;
 if (SUPABASE_URL && SUPABASE_ANON_KEY) {
