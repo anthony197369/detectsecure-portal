@@ -55,7 +55,7 @@ app.get("/api/test", async (req, res) => {
 // ✅ THIS is the automatic “Verify ID” endpoint
 // Example: /api/verify?id=DS-10482
 app.get("/api/verify", async (req, res) => {
-  const id = (req.query.id || "").toString().trim();
+  const id = (req.query.id || "").toString().trim().toUpperCase();
 
   if (!id) return res.status(400).json({ success: false, error: "Missing id" });
   if (!supabase) {
