@@ -101,8 +101,9 @@ app.get("/verify", (req, res) => {
           async function go(){
             const id=document.getElementById("id").value.trim();
             if(!id) return;
-            const r=await fetch("/api/verify?id="+encodeURIComponent(id));
-            const j=await r.json();
+          const r = await fetch(window.location.origin + "/api/verify?id=" + encodeURIComponent(id));
+
+           const j=await r.json();
             document.getElementById("out").innerHTML =
               j.registered ? "✅ Registered" : "❌ Not Found";
           }
