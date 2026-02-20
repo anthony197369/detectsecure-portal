@@ -122,6 +122,56 @@ app.get("/verify", (req, res) => {
     </html>
   `);
 });
+// ===============================
+// REPORT FOUND ITEM (EMAIL OWNER)
+// ===============================
+app.post("/api/report-found", async (req, res) => {
+  try {
+    const { id, finder_name, finder_email, message } = req.body;
+
+    if (!id || !finder_email) {
+      return res.status(400).json({ success: false, error: "Missing required fields" });
+    }
+
+    // Find owner in database
+    const { data: owner, error } = await supabase
+      .from("detectors")
+      .select("name,email")
+      .eq("id", id)
+      .maybeSingle();
+
+    if (error || !owner) {
+      return res.json({ success: false, error: "ID not registered" });
+    }
+
+    // Email content
+    const emailText = `
+Good news — your DetectSecure item has been found!
+
+ID: ${id}
+
+Finder details:
+Name: ${finder_name || "Not provided"}
+Email: ${finder_email}
+
+Message:
+${message || "No message left"}
+
+Reply directly to this email to contact the finder.
+`;
+
+    // TEMP: log instead of send (we wire real email next step)
+    console.log("SEND EMAIL TO:", owner.email);
+    console.log(emailText);
+
+    res.json({ success: true });
+
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ success: false, error: "Server error" });
+  }
+});
+
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => console.log("Server running on port " + PORT));
 
