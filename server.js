@@ -171,6 +171,91 @@ Reply directly to this email to contact the finder.
     res.status(500).json({ success: false, error: "Server error" });
   }
 });
+// ===============================
+// REPORT FOUND ITEM (EMAIL OWNER - STEP 1: LOG ONLY)
+// ===============================
+app.post("/api/report-found", async (req, res) => {
+  try {
+    const { id, finder_name, finder_email, message } = req.body || {};
+
+    if (!id || !finder_email) {
+      return res.status(400).json({ success: false, error: "Missing id or finder_email" });
+    }
+
+    const cleanId = String(id).trim();
+
+    const { data: owner, error } = await supabase
+      .from("detectors")
+      .select("name,email")
+      .eq("id", cleanId)
+      .maybeSingle();
+
+    if (error) return res.status(500).json({ success: false, error: error.message });
+    if (!owner) return res.json({ success: false, error: "ID not registered" });
+
+    const emailText = `Good news — your DetectSecure item has been found!
+
+ID: ${cleanId}
+
+Finder details:
+Name: ${finder_name || "Not provided"}
+Email: ${finder_email}
+
+Message:
+${message || "No message left"}
+
+Reply to the finder to arrange return.`;
+
+    // For now: just log (we’ll wire real email next)
+    console.log("=== REPORT FOUND ===");
+    console.log("SEND TO OWNER:", owner.email);
+    console.log(emailText);
+
+    return res.json({ success: true });
+  } catch (err) {
+    console.error(err);
+    return res.status(500).json({ success: false, error: "Server error" });
+  }
+});
+
+// Simple “Report Found” page (so you can test without Hostinger Builder limits)
+app.get("/report", (req, res) => {
+  res.setHeader("Content-Type", "text/html");
+  res.end(`<!doctype html>
+<html>
+<head><meta charset="utf-8"><title>Report Found</title></head>
+<body style="font-family:Arial;padding:30px;">
+  <h2>Report Found Item</h2>
+
+  <p><label>ID:</label><br><input id="id" style="padding:10px;width:260px" placeholder="DS-10482"></p>
+  <p><label>Your name:</label><br><input id="name" style="padding:10px;width:260px" placeholder="Your name"></p>
+  <p><label>Your email (required):</label><br><input id="email" style="padding:10px;width:260px" placeholder="you@email.com"></p>
+  <p><label>Message:</label><br><textarea id="msg" style="padding:10px;width:360px;height:110px" placeholder="Where you found it, best time to contact, etc"></textarea></p>
+
+  <button onclick="send()" style="padding:12px 18px;">Send to Owner</button>
+  <div id="out" style="margin-top:18px;font-size:18px;"></div>
+
+<script>
+async function send(){
+  const id = document.getElementById("id").value.trim();
+  const finder_name = document.getElementById("name").value.trim();
+  const finder_email = document.getElementById("email").value.trim();
+  const message = document.getElementById("msg").value.trim();
+  if(!id || !finder_email){ document.getElementById("out").innerText="❌ ID + Email required"; return; }
+
+  const r = await fetch("/api/report-found", {
+    method: "POST",
+    headers: { "Content-Type":"application/json" },
+    body: JSON.stringify({ id, finder_name, finder_email, message })
+  });
+
+  const j = await r.json();
+  document.getElementById("out").innerText = j.success ? "✅ Sent (logged on server for now)" : ("❌ " + (j.error || "Failed"));
+}
+</script>
+</body>
+</html>`);
+});
 
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => console.log("Server running on port " + PORT));
