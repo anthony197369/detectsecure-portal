@@ -243,14 +243,14 @@ async function send(){
   const message = document.getElementById("msg").value.trim();
   if(!id || !finder_email){ document.getElementById("out").innerText="❌ ID + Email required"; return; }
 
-  const r = await fetch("/api/report-found", {
+  const r = await fetch("/api/report", {
     method: "POST",
     headers: { "Content-Type":"application/json" },
     body: JSON.stringify({ id, finder_name, finder_email, message })
   });
 
   const j = await r.json();
-  document.getElementById("out").innerText = j.success ? "✅ Sent (logged on server for now)" : ("❌ " + (j.error || "Failed"));
+  document.getElementById("out").innerText = j.success ? "✅ Sent successfully" : ("❌ " + (j.error || "Failed"));
 }
 </script>
 </body>
