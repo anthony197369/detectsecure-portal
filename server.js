@@ -261,43 +261,56 @@ async function send(){
 // ----------------------------
 app.post("/api/report", async (req, res) => {
   try {
-    const id = (req.body.id || "").toString().trim();          // DS-10482
-    const name = (req.body.name || "").toString().trim();
-    const email = (req.body.email || "").toString().trim();
-    const message = (req.body.message || "").toString().trim();
+    const { id, name, email, message } = req.body || {};
 
     if (!id || !email) {
-      return res.status(400).json({ success: false, error: "Missing id or email" });
+      return res.status(400).json({
+        success: false,
+        error: "Missing required fields (id, email)",
+      });
     }
 
     if (!supabase) {
-      return res.status(500).json({ success: false, error: "Supabase env vars missing on server." });
+      return res.status(500).json({
+        success: false,
+        error: "Supabase env vars missing on server.",
+      });
     }
 
-    // 1) Check the detector exists + grab owner email
-    const { data: ownerRow, error: ownerErr } = await supabase
+    // 1) Look up the owner by detector id
+    const { data: owner, error: ownerErr } = await supabase
       .from("detectors")
-      .select("id,email,name")
+      .select("email")
       .eq("id", id)
       .maybeSingle();
 
-    if (ownerErr) return res.status(500).json({ success: false, error: ownerErr.message });
-    if (!ownerRow) return res.status(404).json({ success: false, error: "ID not found" });
+    if (ownerErr) {
+      return res.status(500).json({ success: false, error: ownerErr.message });
+    }
 
-    // 2) Store the report (we’ll email in the next step)
-    const { error: insertErr } = await supabase
+    const owner_email = owner?.email || null;
+
+    // 2) Insert the report row and RETURN it
+    const { data: inserted, error: insErr } = await supabase
       .from("found_reports")
-      .insert([{
-        detector_id: id,
-        finder_name: name,
-        finder_email: email,
-        message,
-        owner_email: ownerRow.email
-      }]);
+      .insert([
+        {
+          detector_id: id,
+          finder_name: name || null,
+          finder_email: email,
+          message: message || null,
+          owner_email,
+        },
+      ])
+      .select("*")
+      .single();
 
-    if (insertErr) return res.status(500).json({ success: false, error: insertErr.message });
+    if (insErr) {
+      return res.status(500).json({ success: false, error: insErr.message });
+    }
 
-    return res.json({ success: true, sent: false, stored: true, ownerEmail: ownerRow.email });
+    // ✅ This proves it actually wrote to DB
+    return res.json({ success: true, inserted });
   } catch (e) {
     return res.status(500).json({ success: false, error: e.message });
   }
