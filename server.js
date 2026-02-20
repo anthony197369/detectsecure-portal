@@ -256,6 +256,57 @@ async function send(){
 </body>
 </html>`);
 });
+// ----------------------------
+// Report Found Item (POST)
+// ----------------------------
+app.post("/api/report", async (req, res) => {
+  try {
+    const id = (req.body.id || "").toString().trim();          // DS-10482
+    const name = (req.body.name || "").toString().trim();
+    const email = (req.body.email || "").toString().trim();
+    const message = (req.body.message || "").toString().trim();
+
+    if (!id || !email) {
+      return res.status(400).json({ success: false, error: "Missing id or email" });
+    }
+
+    if (!supabase) {
+      return res.status(500).json({ success: false, error: "Supabase env vars missing on server." });
+    }
+
+    // 1) Check the detector exists + grab owner email
+    const { data: ownerRow, error: ownerErr } = await supabase
+      .from("detectors")
+      .select("id,email,name")
+      .eq("id", id)
+      .maybeSingle();
+
+    if (ownerErr) return res.status(500).json({ success: false, error: ownerErr.message });
+    if (!ownerRow) return res.status(404).json({ success: false, error: "ID not found" });
+
+    // 2) Store the report (we’ll email in the next step)
+    const { error: insertErr } = await supabase
+      .from("found_reports")
+      .insert([{
+        detector_id: id,
+        finder_name: name,
+        finder_email: email,
+        message,
+        owner_email: ownerRow.email
+      }]);
+
+    if (insertErr) return res.status(500).json({ success: false, error: insertErr.message });
+
+    return res.json({ success: true, sent: false, stored: true, ownerEmail: ownerRow.email });
+  } catch (e) {
+    return res.status(500).json({ success: false, error: e.message });
+  }
+});
+
+// Optional: browser-friendly message (GET)
+app.get("/api/report", (req, res) => {
+  res.status(405).send("Use POST /api/report (this endpoint expects a form submit / fetch POST).");
+});
 
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => console.log("Server running on port " + PORT));
