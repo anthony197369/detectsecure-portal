@@ -3,7 +3,14 @@ import cors from "cors";
 import { createClient } from "@supabase/supabase-js";
 
 const app = express();
-app.use(cors());
+app.use(cors({
+  origin: [
+    "https://detectsecureid.com",
+    "https://www.detectsecureid.com"
+  ],
+  methods: ["GET", "POST"],
+  allowedHeaders: ["Content-Type"]
+}));
 app.use(express.json());
 
 // ✅ Don’t crash the server if env vars are missing
