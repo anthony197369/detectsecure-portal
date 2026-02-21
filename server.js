@@ -1,7 +1,13 @@
 import express from "express";
 import cors from "cors";
 import { createClient } from "@supabase/supabase-js";
+process.on("uncaughtException", err => {
+  console.error("UNCAUGHT EXCEPTION:", err);
+});
 
+process.on("unhandledRejection", err => {
+  console.error("UNHANDLED PROMISE:", err);
+});
 const app = express();
 
 // ---- CORS ----
