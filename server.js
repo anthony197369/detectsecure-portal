@@ -4,44 +4,35 @@ import { createClient } from "@supabase/supabase-js";
 
 const app = express();
 
-/**
- * CORS — allow your front-end site to call this API
- */
+// ----- CORS (allow your frontend to call this API) -----
 app.use(
   cors({
     origin: ["https://detectsecureid.com", "https://www.detectsecureid.com"],
-    methods: ["GET", "POST", "OPTIONS"],
+    methods: ["GET", "POST"],
     allowedHeaders: ["Content-Type"],
   })
 );
 
 app.use(express.json());
 
-/**
- * ENV VARS (set these in Hostinger Deployments → Environment Variables)
- * - SUPABASE_URL
- * - SUPABASE_ANON_KEY            (publishable key)
- * - SUPABASE_SERVICE_ROLE_KEY    (secret service role key)
- */
-const SUPABASE_URL = process.env.SUPABASE_URL;
-const SUPABASE_ANON_KEY = process.env.SUPABASE_ANON_KEY;
-const SUPABASE_SERVICE_ROLE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY;
+// ----- Supabase env vars -----
+const SUPABASE_URL = process.env.SUPABASE_URL || "";
+const SUPABASE_ANON_KEY = process.env.SUPABASE_ANON_KEY || "";
+const SUPABASE_SERVICE_ROLE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY || "";
 
-// Public client (safe reads)
+// Public client (safe reads, obeys RLS if enabled)
 const supabasePublic =
   SUPABASE_URL && SUPABASE_ANON_KEY
     ? createClient(SUPABASE_URL, SUPABASE_ANON_KEY)
     : null;
 
-// Admin client (bypasses RLS, needed for inserts)
+// Admin client (bypasses RLS for inserts/secure ops)
 const supabaseAdmin =
   SUPABASE_URL && SUPABASE_SERVICE_ROLE_KEY
     ? createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY)
     : null;
 
-/**
- * Health checks
- */
+// ----- Health check -----
 app.get("/", (req, res) => res.send("DetectSecure API running ✅"));
 
 app.get("/health", (req, res) => {
@@ -53,63 +44,33 @@ app.get("/health", (req, res) => {
   });
 });
 
-/**
- * Test DB connection (public read)
- */
-app.get("/api/test", async (req, res) => {
-  if (!supabasePublic) {
-    return res.status(500).json({
-      success: false,
-      error: "Missing SUPABASE_URL or SUPABASE_ANON_KEY on server.",
-    });
-  }
-
-  const { data, error } = await supabasePublic
-    .from("detectors")
-    .select("id")
-    .limit(1);
-
-  if (error) return res.status(500).json({ success: false, error: error.message });
-  return res.json({ success: true, data });
-});
-
-/**
- * Verify endpoint
- * Example: /api/verify?id=DS-10482
- */
+// ----- Verify ID -----
+// Example: /api/verify?id=DS-10482
 app.get("/api/verify", async (req, res) => {
-  const id = String(req.query.id || "").trim().toUpperCase();
-  if (!id) return res.status(400).json({ success: false, error: "Missing id" });
+  try {
+    const id = (req.query.id || "").toString().trim().toUpperCase();
+    if (!id) return res.status(400).json({ success: false, error: "Missing id" });
+    if (!supabasePublic)
+      return res.status(500).json({ success: false, error: "Supabase public client missing" });
 
-  if (!supabasePublic) {
-    return res.status(500).json({
-      success: false,
-      error: "Missing SUPABASE_URL or SUPABASE_ANON_KEY on server.",
-    });
+    const { data, error } = await supabasePublic
+      .from("detectors")
+      .select("id")
+      .eq("id", id)
+      .maybeSingle();
+
+    if (error) return res.status(500).json({ success: false, error: error.message });
+
+    return res.json({ success: true, registered: !!data, id });
+  } catch (e) {
+    return res.status(500).json({ success: false, error: e.message });
   }
-
-  const { data, error } = await supabasePublic
-    .from("detectors")
-    .select("id")
-    .eq("id", id)
-    .maybeSingle();
-
-  if (error) return res.status(500).json({ success: false, error: error.message });
-
-  return res.json({
-    success: true,
-    registered: !!data,
-    id,
-  });
 });
 
-/**
- * Simple Verify page (for quick testing)
- */
+// A simple verify page on the API host (for quick testing)
 app.get("/verify", (req, res) => {
   res.setHeader("Content-Type", "text/html");
-  res.send(`
-<!doctype html>
+  res.send(`<!doctype html>
 <html>
 <head>
   <meta name="viewport" content="width=device-width, initial-scale=1" />
@@ -131,23 +92,19 @@ app.get("/verify", (req, res) => {
     async function go(){
       const id=document.getElementById("id").value.trim();
       if(!id) return;
-
       const r = await fetch(window.location.origin + "/api/verify?id=" + encodeURIComponent(id));
       const j = await r.json();
-
       document.getElementById("out").innerHTML =
         j.registered ? "✅ Registered" : "❌ Not Found";
     }
   </script>
 </body>
-</html>
-  `);
+</html>`);
 });
 
-/**
- * Report Found Item (POST) — stores in Supabase table found_reports
- * Expects JSON: { id, finder_name, finder_email, message }
- */
+// ----- Report Found (stores into found_reports) -----
+// POST /api/report
+// body: { id, finder_name, finder_email, message }
 app.post("/api/report", async (req, res) => {
   try {
     const { id, finder_name, finder_email, message } = req.body || {};
@@ -162,15 +119,15 @@ app.post("/api/report", async (req, res) => {
       });
     }
 
-    if (!supabaseAdmin) {
+    if (!supabaseAdmin || !supabasePublic) {
       return res.status(500).json({
         success: false,
-        error: "Supabase admin client missing (SUPABASE_SERVICE_ROLE_KEY not set).",
+        error: "Supabase clients missing (check env vars in Hostinger).",
       });
     }
 
-    // 1) Look up the owner's email for this detector id
-    const { data: owner, error: ownerErr } = await supabaseAdmin
+    // Find owner email (optional, but nice to store)
+    const { data: ownerRow, error: ownerErr } = await supabasePublic
       .from("detectors")
       .select("email")
       .eq("id", cleanId)
@@ -178,9 +135,9 @@ app.post("/api/report", async (req, res) => {
 
     if (ownerErr) return res.status(500).json({ success: false, error: ownerErr.message });
 
-    const owner_email = owner?.email || null;
+    const owner_email = ownerRow?.email || null;
 
-    // 2) Insert into found_reports
+    // Insert report row
     const { data: inserted, error: insErr } = await supabaseAdmin
       .from("found_reports")
       .insert([
@@ -203,9 +160,7 @@ app.post("/api/report", async (req, res) => {
   }
 });
 
-/**
- * Simple Report page (for testing)
- */
+// A simple report page on the API host (for testing)
 app.get("/report", (req, res) => {
   res.setHeader("Content-Type", "text/html");
   res.end(`<!doctype html>
@@ -241,18 +196,12 @@ async function send(){
   });
 
   const j = await r.json();
-  document.getElementById("out").innerText = j.success
-    ? "✅ Sent successfully (stored in database)"
-    : ("❌ " + (j.error || "Failed"));
+  document.getElementById("out").innerText =
+    j.success ? "✅ Saved to database" : ("❌ " + (j.error || "Failed"));
 }
 </script>
 </body>
 </html>`);
-});
-
-// Optional: friendly message if someone visits report endpoint as GET
-app.get("/api/report", (req, res) => {
-  res.status(405).send("Use POST /api/report (expects JSON body).");
 });
 
 const PORT = process.env.PORT || 3000;
