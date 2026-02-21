@@ -14,16 +14,27 @@ app.use(cors({
 app.use(express.json());
 
 // ✅ Don’t crash the server if env vars are missing
-const SUPABASE_URL =
-  process.env.SUPABASE_URL || "https://hzxivuuwqgmeiesvvrny.supabase.co";
-
+// Supabase env vars
+const SUPABASE_URL = process.env.SUPABASE_URL || "https://hzxivuwuqgmeiesvvrny.supabase.co";
+const SUPABASE_ANON_KEY = process.env.SUPABASE_ANON_KEY;
 const SUPABASE_SERVICE_KEY = process.env.SUPABASE_SERVICE_KEY;
 
-let supabase = null;
+// Public client (safe reads)
+let supabasePublic = null;
+
+// Admin client (bypasses RLS for inserts)
+let supabaseAdmin = null;
+
 if (SUPABASE_URL && SUPABASE_ANON_KEY) {
-  supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_KEY);
+  supabasePublic = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 } else {
-  console.error("Missing SUPABASE_URL or SUPABASE_ANON_KEY env vars");
+  console.error("Missing SUPABASE_ANON_KEY");
+}
+
+if (SUPABASE_URL && SUPABASE_SERVICE_KEY) {
+  supabaseAdmin = createClient(SUPABASE_URL, SUPABASE_SERVICE_KEY);
+} else {
+  console.error("Missing SUPABASE_SERVICE_KEY");
 }
 
 // Basic health check
