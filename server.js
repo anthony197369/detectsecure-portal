@@ -17,12 +17,11 @@ app.use(express.json());
 const SUPABASE_URL =
   process.env.SUPABASE_URL || "https://hzxivuuwqgmeiesvvrny.supabase.co";
 
-const SUPABASE_ANON_KEY =
-  process.env.SUPABASE_ANON_KEY || "sb_publishable_PES5RNt9Zt9r6af-r7j47g_dMds_iAd";
+const SUPABASE_SERVICE_KEY = process.env.SUPABASE_SERVICE_KEY;
 
 let supabase = null;
 if (SUPABASE_URL && SUPABASE_ANON_KEY) {
-  supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+  supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_KEY);
 } else {
   console.error("Missing SUPABASE_URL or SUPABASE_ANON_KEY env vars");
 }
