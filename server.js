@@ -3,86 +3,87 @@ import cors from "cors";
 import { createClient } from "@supabase/supabase-js";
 
 const app = express();
-app.use(cors({
-  origin: [
-    "https://detectsecureid.com",
-    "https://www.detectsecureid.com"
-  ],
-  methods: ["GET", "POST"],
-  allowedHeaders: ["Content-Type"]
-}));
+
+// ---- CORS ----
+app.use(
+  cors({
+    origin: [
+      "https://detectsecureid.com",
+      "https://www.detectsecureid.com",
+      // optional: allow Hostinger preview domain if you test from there
+      "https://snow-wallaby-925207.hostingersite.com",
+    ],
+    methods: ["GET", "POST", "OPTIONS"],
+    allowedHeaders: ["Content-Type"],
+  })
+);
+
 app.use(express.json());
 
-// ✅ Don’t crash the server if env vars are missing
-// Supabase env vars
+// ---- Supabase env ----
 const SUPABASE_URL = process.env.SUPABASE_URL || "https://hzxivuwuqgmeiesvvrny.supabase.co";
 const SUPABASE_ANON_KEY = process.env.SUPABASE_ANON_KEY;
-const SUPABASE_SERVICE_KEY = process.env.SUPABASE_SERVICE_KEY;
+const SUPABASE_SERVICE_ROLE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY;
 
 // Public client (safe reads)
 let supabasePublic = null;
-
 // Admin client (bypasses RLS for inserts)
 let supabaseAdmin = null;
 
 if (SUPABASE_URL && SUPABASE_ANON_KEY) {
   supabasePublic = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 } else {
-  console.error("Missing SUPABASE_ANON_KEY");
+  console.error("Missing SUPABASE_URL or SUPABASE_ANON_KEY");
 }
 
-if (SUPABASE_URL && SUPABASE_SERVICE_KEY) {
-  supabaseAdmin = createClient(SUPABASE_URL, SUPABASE_SERVICE_KEY);
+if (SUPABASE_URL && SUPABASE_SERVICE_ROLE_KEY) {
+  supabaseAdmin = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
 } else {
-  console.error("Missing SUPABASE_SERVICE_KEY");
+  console.error("Missing SUPABASE_URL or SUPABASE_SERVICE_ROLE_KEY");
 }
 
-// Basic health check
+// ---- Health ----
 app.get("/", (req, res) => {
   res.send("DetectSecure API running ✅");
 });
 
-// Check env var status quickly in browser
 app.get("/health", (req, res) => {
   res.json({
     ok: true,
     hasSupabaseUrl: !!SUPABASE_URL,
     hasAnonKey: !!SUPABASE_ANON_KEY,
+    hasServiceRoleKey: !!SUPABASE_SERVICE_ROLE_KEY,
   });
 });
 
-// Test DB connection (won’t crash if table missing)
+// ---- Test DB connection (READ using public client) ----
 app.get("/api/test", async (req, res) => {
-  if (!supabase) {
+  if (!supabasePublic) {
     return res.status(500).json({
       success: false,
-      error: "Supabase env vars missing on server (SUPABASE_URL / SUPABASE_ANON_KEY).",
+      error: "Supabase public client not configured (SUPABASE_URL / SUPABASE_ANON_KEY).",
     });
   }
 
-  const { data, error } = await supabase
-    .from("detectors")
-    .select("id")
-    .limit(1);
-
+  const { data, error } = await supabasePublic.from("detectors").select("id").limit(1);
   if (error) return res.status(500).json({ success: false, error: error.message });
+
   res.json({ success: true, data });
 });
 
-// ✅ THIS is the automatic “Verify ID” endpoint
-// Example: /api/verify?id=DS-10482
+// ---- Verify endpoint (READ using public client) ----
 app.get("/api/verify", async (req, res) => {
   const id = (req.query.id || "").toString().trim().toUpperCase();
-
   if (!id) return res.status(400).json({ success: false, error: "Missing id" });
-  if (!supabase) {
+
+  if (!supabasePublic) {
     return res.status(500).json({
       success: false,
-      error: "Supabase env vars missing on server.",
+      error: "Supabase public client missing on server.",
     });
   }
 
-  const { data, error } = await supabase
+  const { data, error } = await supabasePublic
     .from("detectors")
     .select("id")
     .eq("id", id)
@@ -90,12 +91,10 @@ app.get("/api/verify", async (req, res) => {
 
   if (error) return res.status(500).json({ success: false, error: error.message });
 
-  res.json({
-    success: true,
-    registered: !!data,
-    id,
-  });
+  res.json({ success: true, registered: !!data, id });
 });
+
+// ---- Simple Verify page ----
 app.get("/verify", (req, res) => {
   res.setHeader("Content-Type", "text/html");
   res.send(`
@@ -121,9 +120,10 @@ app.get("/verify", (req, res) => {
           async function go(){
             const id=document.getElementById("id").value.trim();
             if(!id) return;
-          const r = await fetch(window.location.origin + "/api/verify?id=" + encodeURIComponent(id));
 
-           const j=await r.json();
+            const r = await fetch(window.location.origin + "/api/verify?id=" + encodeURIComponent(id));
+            const j = await r.json();
+
             document.getElementById("out").innerHTML =
               j.registered ? "✅ Registered" : "❌ Not Found";
           }
@@ -132,103 +132,8 @@ app.get("/verify", (req, res) => {
     </html>
   `);
 });
-// ===============================
-// REPORT FOUND ITEM (EMAIL OWNER)
-// ===============================
-app.post("/api/report-found", async (req, res) => {
-  try {
-    const { id, finder_name, finder_email, message } = req.body;
 
-    if (!id || !finder_email) {
-      return res.status(400).json({ success: false, error: "Missing required fields" });
-    }
-
-    // Find owner in database
-    const { data: owner, error } = await supabase
-      .from("detectors")
-      .select("name,email")
-      .eq("id", id)
-      .maybeSingle();
-
-    if (error || !owner) {
-      return res.json({ success: false, error: "ID not registered" });
-    }
-
-    // Email content
-    const emailText = `
-Good news — your DetectSecure item has been found!
-
-ID: ${id}
-
-Finder details:
-Name: ${finder_name || "Not provided"}
-Email: ${finder_email}
-
-Message:
-${message || "No message left"}
-
-Reply directly to this email to contact the finder.
-`;
-
-    // TEMP: log instead of send (we wire real email next step)
-    console.log("SEND EMAIL TO:", owner.email);
-    console.log(emailText);
-
-    res.json({ success: true });
-
-  } catch (err) {
-    console.error(err);
-    res.status(500).json({ success: false, error: "Server error" });
-  }
-});
-// ===============================
-// REPORT FOUND ITEM (EMAIL OWNER - STEP 1: LOG ONLY)
-// ===============================
-app.post("/api/report-found", async (req, res) => {
-  try {
-    const { id, finder_name, finder_email, message } = req.body || {};
-
-    if (!id || !finder_email) {
-      return res.status(400).json({ success: false, error: "Missing id or finder_email" });
-    }
-
-    const cleanId = String(id).trim();
-
-    const { data: owner, error } = await supabase
-      .from("detectors")
-      .select("name,email")
-      .eq("id", cleanId)
-      .maybeSingle();
-
-    if (error) return res.status(500).json({ success: false, error: error.message });
-    if (!owner) return res.json({ success: false, error: "ID not registered" });
-
-    const emailText = `Good news — your DetectSecure item has been found!
-
-ID: ${cleanId}
-
-Finder details:
-Name: ${finder_name || "Not provided"}
-Email: ${finder_email}
-
-Message:
-${message || "No message left"}
-
-Reply to the finder to arrange return.`;
-
-    // For now: just log (we’ll wire real email next)
-    console.log("=== REPORT FOUND ===");
-    console.log("SEND TO OWNER:", owner.email);
-    console.log(emailText);
-
-    return res.json({ success: true });
-  } catch (err) {
-    console.error(err);
-    return res.status(500).json({ success: false, error: "Server error" });
-  }
-});
-
-// Simple “Report Found” page (so you can test without Hostinger Builder limits)
+// ---- Report Found page ----
 app.get("/report", (req, res) => {
   res.setHeader("Content-Type", "text/html");
   res.end(`<!doctype html>
@@ -238,9 +143,9 @@ app.get("/report", (req, res) => {
   <h2>Report Found Item</h2>
 
   <p><label>ID:</label><br><input id="id" style="padding:10px;width:260px" placeholder="DS-10482"></p>
-  <p><label>Your name:</label><br><input id="name" style="padding:10px;width:260px" placeholder="Your name"></p>
-  <p><label>Your email (required):</label><br><input id="email" style="padding:10px;width:260px" placeholder="you@email.com"></p>
-  <p><label>Message:</label><br><textarea id="msg" style="padding:10px;width:360px;height:110px" placeholder="Where you found it, best time to contact, etc"></textarea></p>
+  <p><label>Your name:</label><br><input id="finder_name" style="padding:10px;width:260px" placeholder="Your name"></p>
+  <p><label>Your email (required):</label><br><input id="finder_email" style="padding:10px;width:260px" placeholder="you@email.com"></p>
+  <p><label>Message:</label><br><textarea id="message" style="padding:10px;width:360px;height:110px" placeholder="Where you found it, best time to contact, etc"></textarea></p>
 
   <button onclick="send()" style="padding:12px 18px;">Send to Owner</button>
   <div id="out" style="margin-top:18px;font-size:18px;"></div>
@@ -248,50 +153,57 @@ app.get("/report", (req, res) => {
 <script>
 async function send(){
   const id = document.getElementById("id").value.trim();
-  const finder_name = document.getElementById("name").value.trim();
-  const finder_email = document.getElementById("email").value.trim();
-  const message = document.getElementById("msg").value.trim();
-  if(!id || !finder_email){ document.getElementById("out").innerText="❌ ID + Email required"; return; }
+  const finder_name = document.getElementById("finder_name").value.trim();
+  const finder_email = document.getElementById("finder_email").value.trim();
+  const message = document.getElementById("message").value.trim();
 
-   const r = await fetch(window.location.origin + "/api/report", { 
-   method: "POST",
+  if(!id || !finder_email){
+    document.getElementById("out").innerText="❌ ID + Email required";
+    return;
+  }
+
+  const r = await fetch(window.location.origin + "/api/report", {
+    method: "POST",
     headers: { "Content-Type":"application/json" },
     body: JSON.stringify({ id, finder_name, finder_email, message })
   });
 
   const j = await r.json();
-  document.getElementById("out").innerText = j.success ? "✅ Sent successfully" : ("❌ " + (j.error || "Failed"));
+  document.getElementById("out").innerText =
+    j.success ? "✅ Sent successfully" : ("❌ " + (j.error || "Failed"));
 }
 </script>
 </body>
 </html>`);
 });
-// ----------------------------
-// Report Found Item (POST)
-// ----------------------------
+
+// ---- Report Found API (WRITE using admin client) ----
 app.post("/api/report", async (req, res) => {
   try {
-    const { id, name, email, message } = req.body || {};
+    const { id, finder_name, finder_email, message } = req.body || {};
 
-    if (!id || !email) {
+    const cleanId = String(id || "").trim().toUpperCase();
+    const cleanEmail = String(finder_email || "").trim();
+
+    if (!cleanId || !cleanEmail) {
       return res.status(400).json({
         success: false,
-        error: "Missing required fields (id, email)",
+        error: "Missing required fields (id, finder_email)",
       });
     }
 
-    if (!supabase) {
+    if (!supabaseAdmin) {
       return res.status(500).json({
         success: false,
-        error: "Supabase env vars missing on server.",
+        error: "Supabase admin client missing (SUPABASE_SERVICE_ROLE_KEY).",
       });
     }
 
-    // 1) Look up the owner by detector id
-    const { data: owner, error: ownerErr } = await supabase
+    // 1) Look up the owner (using admin avoids any RLS issues)
+    const { data: owner, error: ownerErr } = await supabaseAdmin
       .from("detectors")
       .select("email")
-      .eq("id", id)
+      .eq("id", cleanId)
       .maybeSingle();
 
     if (ownerErr) {
@@ -300,15 +212,15 @@ app.post("/api/report", async (req, res) => {
 
     const owner_email = owner?.email || null;
 
-    // 2) Insert the report row and RETURN it
-    const { data: inserted, error: insErr } = await supabase
+    // 2) Insert the report row
+    const { data: inserted, error: insErr } = await supabaseAdmin
       .from("found_reports")
       .insert([
         {
-          detector_id: id,
-          finder_name: name || null,
-          finder_email: email,
-          message: message || null,
+          detector_id: cleanId,
+          finder_name: finder_name ? String(finder_name).trim() : null,
+          finder_email: cleanEmail,
+          message: message ? String(message).trim() : null,
           owner_email,
         },
       ])
@@ -319,7 +231,6 @@ app.post("/api/report", async (req, res) => {
       return res.status(500).json({ success: false, error: insErr.message });
     }
 
-    // ✅ This proves it actually wrote to DB
     return res.json({ success: true, inserted });
   } catch (e) {
     return res.status(500).json({ success: false, error: e.message });
@@ -328,11 +239,9 @@ app.post("/api/report", async (req, res) => {
 
 // Optional: browser-friendly message (GET)
 app.get("/api/report", (req, res) => {
-  res.status(405).send("Use POST /api/report (this endpoint expects a form submit / fetch POST).");
+  res.status(405).send("Use POST /api/report");
 });
 
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => console.log("Server running on port " + PORT));
-
-
 
