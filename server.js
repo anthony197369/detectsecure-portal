@@ -253,8 +253,8 @@ async function send(){
   const message = document.getElementById("msg").value.trim();
   if(!id || !finder_email){ document.getElementById("out").innerText="❌ ID + Email required"; return; }
 
-  const r = await fetch("/api/report", {
-    method: "POST",
+   const r = await fetch(window.location.origin + "/api/report", { 
+   method: "POST",
     headers: { "Content-Type":"application/json" },
     body: JSON.stringify({ id, finder_name, finder_email, message })
   });
