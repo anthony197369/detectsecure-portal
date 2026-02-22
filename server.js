@@ -178,6 +178,17 @@ app.get("/report", (req, res) => {
   <div id="out" style="margin-top:18px;font-size:18px;"></div>
 
 <script>
+<script>
+  // ✅ Auto-fill ID from URL: /report?id=DS-10482
+  (function () {
+    const params = new URLSearchParams(window.location.search);
+    const id = (params.get("id") || "").trim().toUpperCase();
+    if (id) document.getElementById("id").value = id;
+  })();
+
+  async function send(){
+    const id = document.getElementById("id").value.trim();
+    ...
 async function send(){
   const id = document.getElementById("id").value.trim();
   const finder_name = document.getElementById("name").value.trim();
