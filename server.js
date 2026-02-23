@@ -222,7 +222,10 @@ async function send(){
 </body>
 </html>`);
 });
-
+// Optional: browser-friendly message (GET)
+app.get("/api/report", (req, res) => {
+  res.status(405).send("Use POST /api/report (this endpoint expects a form submit / fetch POST).");
+});
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => console.log("Server running on port " + PORT));
 
