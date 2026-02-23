@@ -162,6 +162,10 @@ app.post("/api/report", async (req, res) => {
 
 // A simple report page on the API host (for testing)
 app.get("/report", (req, res) => {
+    const prefillId = String(req.query.id || "")
+    .trim()
+    .toUpperCase()
+    .replace(/"/g, "");
   res.setHeader("Content-Type", "text/html");
   res.end(`<!doctype html>
 <html>
@@ -169,7 +173,7 @@ app.get("/report", (req, res) => {
 <body style="font-family:Arial;padding:30px;">
   <h2>Report Found Item</h2>
 
-  <p><label>ID:</label><br><input id="id" style="padding:10px;width:260px" placeholder="DS-10482"></p>
+  <p><label>ID:</label><br><input id="id" style="padding:10px;width:260px" placeholder="DS-10482" value="${prefillId}"></p>
   <p><label>Your name:</label><br><input id="name" style="padding:10px;width:260px" placeholder="Your name"></p>
   <p><label>Your email (required):</label><br><input id="email" style="padding:10px;width:260px" placeholder="you@email.com"></p>
   <p><label>Message:</label><br><textarea id="msg" style="padding:10px;width:360px;height:110px" placeholder="Where you found it, best time to contact, etc"></textarea></p>
