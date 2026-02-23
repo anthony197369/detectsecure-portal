@@ -162,32 +162,77 @@ app.post("/api/report", async (req, res) => {
 
 // A simple report page on the API host (for testing)
 app.get("/report", (req, res) => {
-    const prefillId = String(req.query.id || "")
-    .trim()
-    .toUpperCase()
-    .replace(/"/g, "");
   res.setHeader("Content-Type", "text/html");
   res.end(`<!doctype html>
 <html>
-<head><meta charset="utf-8"><title>Report Found</title></head>
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Report Found Item</title>
+</head>
+
 <body style="font-family:Arial;padding:30px;">
   <h2>Report Found Item</h2>
 
-  <p><label>ID:</label><br><input id="id" style="padding:10px;width:260px" placeholder="DS-10482" value="${prefillId}"></p>
-  <p><label>Your name:</label><br><input id="name" style="padding:10px;width:260px" placeholder="Your name"></p>
-  <p><label>Your email (required):</label><br><input id="email" style="padding:10px;width:260px" placeholder="you@email.com"></p>
-  <p><label>Message:</label><br><textarea id="msg" style="padding:10px;width:360px;height:110px" placeholder="Where you found it, best time to contact, etc"></textarea></p>
+  <p><label>ID:</label><br>
+    <input id="id" style="padding:10px;width:260px" placeholder="DS-10482">
+  </p>
+
+  <p><label>Your name:</label><br>
+    <input id="name" style="padding:10px;width:260px" placeholder="Your name">
+  </p>
+
+  <p><label>Your email (required):</label><br>
+    <input id="email" style="padding:10px;width:260px" placeholder="you@email.com">
+  </p>
+
+  <p><label>Message:</label><br>
+    <textarea id="msg" style="padding:10px;width:360px;height:110px" placeholder="Where you found it, best time to contact, etc"></textarea>
+  </p>
 
   <button onclick="send()" style="padding:12px 18px;">Send to Owner</button>
   <div id="out" style="margin-top:18px;font-size:18px;"></div>
 
-<script>
-window.addEventListener("DOMContentLoaded", function () {
-  const params = new URLSearchParams(window.location.search);
-  const id = (params.get("id") || "").trim().toUpperCase();
+  <script>
+    // Auto-fill ID from URL like: /report?id=DS-10482
+    (function () {
+      const params = new URLSearchParams(window.location.search);
+      const id = (params.get("id") || "").trim().toUpperCase();
+      if (id) document.getElementById("id").value = id;
+    })();
 
-  const input = document.getElementById("id");
-  if (input && id) input.value = id;
+    async function send(){
+      const id = document.getElementById("id").value.trim().toUpperCase();
+      const finder_name = document.getElementById("name").value.trim();
+      const finder_email = document.getElementById("email").value.trim();
+      const message = document.getElementById("msg").value.trim();
+
+      if(!id || !finder_email){
+        document.getElementById("out").innerText = "❌ ID + Email required";
+        return;
+      }
+
+      document.getElementById("out").innerText = "⏳ Sending...";
+
+      const r = await fetch("/api/report", {
+        method: "POST",
+        headers: { "Content-Type":"application/json" },
+        body: JSON.stringify({ id, finder_name, finder_email, message })
+      });
+
+      let j = null;
+      try { j = await r.json(); } catch(e) {}
+
+      if(r.ok && j && j.success){
+        document.getElementById("out").innerText = "✅ Saved to database";
+      } else {
+        const msg = (j && (j.error || j.message)) ? (j.error || j.message) : ("HTTP " + r.status);
+        document.getElementById("out").innerText = "❌ " + msg;
+      }
+    }
+  </script>
+</body>
+</html>`);
 });
 
   
