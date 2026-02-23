@@ -28,7 +28,9 @@ const supabaseAdmin =
 
 // --- Basic health check ---
 app.get("/", (req, res) => res.send("DetectSecure API running ✅ v1-ENVTEST"));
-
+app.get("/envtest", (req, res) => {
+  res.json({ ok: true, keys: Object.keys(process.env).slice(0, 20) });
+});
 app.get("/health", (req, res) => {
   res.json({
     ok: true,
