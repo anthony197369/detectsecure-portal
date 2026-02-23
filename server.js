@@ -4,7 +4,7 @@ import { createClient } from "@supabase/supabase-js";
 
 const app = express();
 
-// ----- CORS (allow your frontend to call this API) -----
+// ---- CORS ----
 app.use(
   cors({
     origin: ["https://detectsecureid.com", "https://www.detectsecureid.com"],
@@ -15,26 +15,28 @@ app.use(
 
 app.use(express.json());
 
-// ----- Supabase env vars -----
+// ---- Supabase env vars ----
 const SUPABASE_URL = process.env.SUPABASE_URL || "";
 const SUPABASE_ANON_KEY = process.env.SUPABASE_ANON_KEY || "";
-const SUPABASE_SERVICE_ROLE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY || "";
+const SUPABASE_SERVICE_ROLE_KEY =
+  process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.SUPABASE_SERVICE_KEY || "";
 
-// Public client (safe reads, obeys RLS if enabled)
+// Public client (reads)
 const supabasePublic =
   SUPABASE_URL && SUPABASE_ANON_KEY
     ? createClient(SUPABASE_URL, SUPABASE_ANON_KEY)
     : null;
 
-// Admin client (bypasses RLS for inserts/secure ops)
+// Admin client (writes)
 const supabaseAdmin =
   SUPABASE_URL && SUPABASE_SERVICE_ROLE_KEY
     ? createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY)
     : null;
 
-// ----- Health check -----
+// ---- Root ----
 app.get("/", (req, res) => res.send("DetectSecure API running ✅"));
 
+// ---- Health ----
 app.get("/health", (req, res) => {
   res.json({
     ok: true,
@@ -44,14 +46,18 @@ app.get("/health", (req, res) => {
   });
 });
 
-// ----- Verify ID -----
-// Example: /api/verify?id=DS-10482
+// ---- Verify endpoint ----
 app.get("/api/verify", async (req, res) => {
   try {
     const id = (req.query.id || "").toString().trim().toUpperCase();
     if (!id) return res.status(400).json({ success: false, error: "Missing id" });
-    if (!supabasePublic)
-      return res.status(500).json({ success: false, error: "Supabase public client missing" });
+
+    if (!supabasePublic) {
+      return res.status(500).json({
+        success: false,
+        error: "Supabase env vars missing (SUPABASE_URL / SUPABASE_ANON_KEY).",
+      });
+    }
 
     const { data, error } = await supabasePublic
       .from("detectors")
@@ -67,7 +73,7 @@ app.get("/api/verify", async (req, res) => {
   }
 });
 
-// A simple verify page on the API host (for quick testing)
+// ---- Simple verify page ----
 app.get("/verify", (req, res) => {
   res.setHeader("Content-Type", "text/html");
   res.send(`<!doctype html>
@@ -92,7 +98,7 @@ app.get("/verify", (req, res) => {
     async function go(){
       const id=document.getElementById("id").value.trim();
       if(!id) return;
-      const r = await fetch(window.location.origin + "/api/verify?id=" + encodeURIComponent(id));
+      const r = await fetch("/api/verify?id=" + encodeURIComponent(id));
       const j = await r.json();
       document.getElementById("out").innerHTML =
         j.registered ? "✅ Registered" : "❌ Not Found";
@@ -102,65 +108,7 @@ app.get("/verify", (req, res) => {
 </html>`);
 });
 
-// ----- Report Found (stores into found_reports) -----
-// POST /api/report
-// body: { id, finder_name, finder_email, message }
-app.post("/api/report", async (req, res) => {
-  try {
-    const { id, finder_name, finder_email, message } = req.body || {};
-
-    const cleanId = String(id || "").trim().toUpperCase();
-    const cleanEmail = String(finder_email || "").trim();
-
-    if (!cleanId || !cleanEmail) {
-      return res.status(400).json({
-        success: false,
-        error: "Missing required fields (id, finder_email)",
-      });
-    }
-
-    if (!supabaseAdmin || !supabasePublic) {
-      return res.status(500).json({
-        success: false,
-        error: "Supabase clients missing (check env vars in Hostinger).",
-      });
-    }
-
-    // Find owner email (optional, but nice to store)
-    const { data: ownerRow, error: ownerErr } = await supabasePublic
-      .from("detectors")
-      .select("email")
-      .eq("id", cleanId)
-      .maybeSingle();
-
-    if (ownerErr) return res.status(500).json({ success: false, error: ownerErr.message });
-
-    const owner_email = ownerRow?.email || null;
-
-    // Insert report row
-    const { data: inserted, error: insErr } = await supabaseAdmin
-      .from("found_reports")
-      .insert([
-        {
-          detector_id: cleanId,
-          finder_name: finder_name ? String(finder_name).trim() : null,
-          finder_email: cleanEmail,
-          message: message ? String(message).trim() : null,
-          owner_email,
-        },
-      ])
-      .select("*")
-      .single();
-
-    if (insErr) return res.status(500).json({ success: false, error: insErr.message });
-
-    return res.json({ success: true, inserted });
-  } catch (e) {
-    return res.status(500).json({ success: false, error: e.message });
-  }
-});
-
-// A simple report page on the API host (for testing)
+// ---- Report page ----
 app.get("/report", (req, res) => {
   res.setHeader("Content-Type", "text/html");
   res.end(`<!doctype html>
@@ -170,7 +118,6 @@ app.get("/report", (req, res) => {
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>Report Found Item</title>
 </head>
-
 <body style="font-family:Arial;padding:30px;">
   <h2>Report Found Item</h2>
 
@@ -179,33 +126,34 @@ app.get("/report", (req, res) => {
   </p>
 
   <p><label>Your name:</label><br>
-    <input id="name" style="padding:10px;width:260px" placeholder="Your name">
+    <input id="finder_name" style="padding:10px;width:260px" placeholder="Your name">
   </p>
 
   <p><label>Your email (required):</label><br>
-    <input id="email" style="padding:10px;width:260px" placeholder="you@email.com">
+    <input id="finder_email" style="padding:10px;width:260px" placeholder="you@email.com">
   </p>
 
   <p><label>Message:</label><br>
-    <textarea id="msg" style="padding:10px;width:360px;height:110px" placeholder="Where you found it, best time to contact, etc"></textarea>
+    <textarea id="message" style="padding:10px;width:360px;height:110px"
+      placeholder="Where you found it, best time to contact, etc"></textarea>
   </p>
 
-  <button onclick="send()" style="padding:12px 18px;">Send to Owner</button>
+  <button onclick="sendReport()" style="padding:12px 18px;">Send to Owner</button>
   <div id="out" style="margin-top:18px;font-size:18px;"></div>
 
   <script>
-    // Auto-fill ID from URL like: /report?id=DS-10482
-    (function () {
+    // Autofill ID from URL: /report?id=DS-10482
+    (function(){
       const params = new URLSearchParams(window.location.search);
       const id = (params.get("id") || "").trim().toUpperCase();
-      if (id) document.getElementById("id").value = id;
+      if(id) document.getElementById("id").value = id;
     })();
 
-    async function send(){
+    async function sendReport(){
       const id = document.getElementById("id").value.trim().toUpperCase();
-      const finder_name = document.getElementById("name").value.trim();
-      const finder_email = document.getElementById("email").value.trim();
-      const message = document.getElementById("msg").value.trim();
+      const finder_name = document.getElementById("finder_name").value.trim();
+      const finder_email = document.getElementById("finder_email").value.trim();
+      const message = document.getElementById("message").value.trim();
 
       if(!id || !finder_email){
         document.getElementById("out").innerText = "❌ ID + Email required";
@@ -235,42 +183,74 @@ app.get("/report", (req, res) => {
 </html>`);
 });
 
-  
-<script>
- 
+// ---- Report API (POST) ----
+app.post("/api/report", async (req, res) => {
+  try {
+    const { id, finder_name, finder_email, message } = req.body || {};
 
-  async function send(){
-    const id = document.getElementById("id").value.trim();
-    ...
-async function send(){
-  const id = document.getElementById("id").value.trim();
-  const finder_name = document.getElementById("name").value.trim();
-  const finder_email = document.getElementById("email").value.trim();
-  const message = document.getElementById("msg").value.trim();
+    const cleanId = String(id || "").trim().toUpperCase();
+    const cleanEmail = String(finder_email || "").trim();
 
-  if(!id || !finder_email){
-    document.getElementById("out").innerText="❌ ID + Email required";
-    return;
+    if (!cleanId || !cleanEmail) {
+      return res.status(400).json({
+        success: false,
+        error: "Missing required fields (id, finder_email)",
+      });
+    }
+
+    if (!supabasePublic) {
+      return res.status(500).json({
+        success: false,
+        error: "Supabase public client missing (SUPABASE_URL / SUPABASE_ANON_KEY).",
+      });
+    }
+    if (!supabaseAdmin) {
+      return res.status(500).json({
+        success: false,
+        error:
+          "Supabase admin client missing (SUPABASE_SERVICE_ROLE_KEY / SUPABASE_SERVICE_KEY).",
+      });
+    }
+
+    // Look up owner email from detectors table
+    const { data: owner, error: ownerErr } = await supabasePublic
+      .from("detectors")
+      .select("email")
+      .eq("id", cleanId)
+      .maybeSingle();
+
+    if (ownerErr) return res.status(500).json({ success: false, error: ownerErr.message });
+
+    const owner_email = owner?.email || null;
+
+    // Insert into found_reports
+    const { data: inserted, error: insErr } = await supabaseAdmin
+      .from("found_reports")
+      .insert([
+        {
+          detector_id: cleanId,
+          finder_name: finder_name ? String(finder_name).trim() : null,
+          finder_email: cleanEmail,
+          message: message ? String(message).trim() : null,
+          owner_email,
+        },
+      ])
+      .select("*")
+      .single();
+
+    if (insErr) return res.status(500).json({ success: false, error: insErr.message });
+
+    return res.json({ success: true, inserted });
+  } catch (e) {
+    return res.status(500).json({ success: false, error: e.message });
   }
-
-  const r = await fetch(window.location.origin + "/api/report", {
-    method: "POST",
-    headers: { "Content-Type":"application/json" },
-    body: JSON.stringify({ id, finder_name, finder_email, message })
-  });
-
-  const j = await r.json();
-  document.getElementById("out").innerText =
-    j.success ? "✅ Saved to database" : ("❌ " + (j.error || "Failed"));
-}
-</script>
-</body>
-</html>`);
 });
-// Optional: browser-friendly message (GET)
+
+// Optional GET message
 app.get("/api/report", (req, res) => {
   res.status(405).send("Use POST /api/report (this endpoint expects a form submit / fetch POST).");
 });
+
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => console.log("Server running on port " + PORT));
 
