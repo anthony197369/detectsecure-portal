@@ -32,9 +32,9 @@ app.get("/", (req, res) => res.send("DetectSecure API running ✅"));
 app.get("/health", (req, res) => {
   res.json({
     ok: true,
-    hasSupabaseUrl: !!SUPABASE_URL,
-    hasAnonKey: !!SUPABASE_ANON_KEY,
-    hasServiceRoleKey: !!SUPABASE_SERVICE_ROLE_KEY,
+    hasSupabaseUrl: !!process.env.SUPABASE_URL,
+    hasAnonKey: !!process.env.SUPABASE_ANON_KEY,
+    hasServiceRoleKey: !!process.env.SUPABASE_SERVICE_ROLE_KEY,
   });
 });
 
