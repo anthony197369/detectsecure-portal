@@ -1,6 +1,11 @@
 import dotenv from "dotenv";
-const result = dotenv.config({ path: "/home/u751860704/public_html/nodejs/.env" });
-console.log("DOTENV RESULT:", result.error ? result.error : "loaded", "keys:", Object.keys(result.parsed || {}));
+
+// load environment variables provided by Hostinger
+const result = dotenv.config();
+
+console.log("DOTENV RESULT:", result.error ? result.error : "loaded");
+console.log("ENV SUPABASE_URL:", process.env.SUPABASE_URL);
+console.log("ENV SERVICE KEY EXISTS:", !!process.env.SUPABASE_SERVICE_ROLE_KEY);
 
 import express from "express";
 import cors from "cors";
