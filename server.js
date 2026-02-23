@@ -27,7 +27,7 @@ const supabaseAdmin =
     : null;
 
 // --- Basic health check ---
-app.get("/", (req, res) => res.send("DetectSecure API running ✅"));
+app.get("/", (req, res) => res.send("DetectSecure API running ✅ v1-ENVTEST"));
 
 app.get("/health", (req, res) => {
   res.json({
