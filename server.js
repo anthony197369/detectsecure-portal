@@ -1,5 +1,7 @@
 import dotenv from "dotenv";
-dotenv.config({ path: "/home/u751860704/public_html/nodejs/.env" });
+const result = dotenv.config({ path: "/home/u751860704/public_html/nodejs/.env" });
+console.log("DOTENV RESULT:", result.error ? result.error : "loaded", "keys:", Object.keys(result.parsed || {}));
+
 import express from "express";
 import cors from "cors";
 import { createClient } from "@supabase/supabase-js";
