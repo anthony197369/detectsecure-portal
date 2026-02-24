@@ -12,7 +12,14 @@ import cors from "cors";
 import { createClient } from "@supabase/supabase-js";
 
 const app = express();
-
+// ===== DEBUG ROUTE (temporary) =====
+app.get("/debug-env", (req, res) => {
+  res.json({
+    SUPABASE_URL: !!process.env.SUPABASE_URL,
+    SUPABASE_ANON_KEY: !!process.env.SUPABASE_ANON_KEY,
+    SUPABASE_SERVICE_ROLE_KEY: !!process.env.SUPABASE_SERVICE_ROLE_KEY,
+  });
+});
 // --- CORS ---
 app.use(
   cors({
