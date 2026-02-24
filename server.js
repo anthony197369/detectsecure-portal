@@ -233,11 +233,18 @@ app.get("/report", (req, res) => {
       out.innerText = "Sending...";
 
       try {
-        const r = await fetch("/api/report", {
-          method: "POST",
-          headers: { "Content-Type":"application/json" },
-          body: JSON.stringify({ id, finder_name, finder_email, message })
-        });
+      const FUNCTION_URL = "https://hzxivuuuwqgmeiesvvrny.supabase.co/functions/v1/report-found";
+const ANON_KEY = "sb_publishable_PES5RNt9Zt9r6af-r7j47g_dMds_iAd";
+
+const r = await fetch(FUNCTION_URL, {
+  method: "POST",
+  headers: {
+    "Content-Type": "application/json",
+    "apikey": ANON_KEY,
+    "Authorization": `Bearer ${ANON_KEY}`,
+  },
+  body: JSON.stringify({ id, finder_name, finder_email, message }),
+});
 
         const text = await r.text();
         let j = null;
