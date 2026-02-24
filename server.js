@@ -23,9 +23,9 @@ app.get("/debug-env", (req, res) => {
 // --- CORS ---
 app.use(
   cors({
-    origin: ["https://detectsecureid.com", "https://www.detectsecureid.com", "*"],
+    origin: true, // reflect the request origin
     methods: ["GET", "POST", "OPTIONS"],
-    allowedHeaders: ["Content-Type"],
+    allowedHeaders: ["Content-Type", "Authorization", "apikey"],
   })
 );
 
