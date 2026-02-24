@@ -241,7 +241,7 @@ const r = await fetch(FUNCTION_URL, {
   headers: {
     "Content-Type": "application/json",
     "apikey": ANON_KEY,
-    "Authorization": `Bearer ${ANON_KEY}`,
+    "Authorization": "Bearer " + ANON_KEY,
   },
   body: JSON.stringify({ id, finder_name, finder_email, message }),
 });
