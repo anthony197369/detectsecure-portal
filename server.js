@@ -276,14 +276,22 @@ app.get("/report", (req, res) => {
       const FUNCTION_URL = "https://hzxivuuuwqgmeiesvvrny.supabase.co/functions/v1/report-found";
 const ANON_KEY = "sb_publishable_PES5RNt9Zt9r6af-r7j47g_dMds_iAd";
 
-const r = await fetch(FUNCTION_URL, {
+const SUPABASE_URL = "https://hzxivuuuwqgmeiesvvrny.supabase.co";
+const ANON_KEY = "sb_publishable_PES5RNt9Zt9r6af-r7j47g_dMds_iAd";
+
+const r = await fetch(`${SUPABASE_URL}/rest/v1/rpc/report_found`, {
   method: "POST",
   headers: {
     "Content-Type": "application/json",
     "apikey": ANON_KEY,
-    "Authorization": "Bearer " + ANON_KEY,
+    "Authorization": "Bearer " + ANON_KEY
   },
-  body: JSON.stringify({ id, finder_name, finder_email, message }),
+  body: JSON.stringify({
+    p_detector_id: id,
+    p_finder_name: finder_name,
+    p_finder_email: finder_email,
+    p_message: message
+  })
 });
 
         const text = await r.text();
