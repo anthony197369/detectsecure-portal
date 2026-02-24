@@ -119,6 +119,7 @@ app.get("/verify", (req, res) => {
 
 // --- Report Found (POST) ---
 // Expects: { id, finder_name, finder_email, message }
+
 app.post("/api/report", async (req, res) => {
   try {
     const { id, finder_name, finder_email, message } = req.body || {};
@@ -131,6 +132,45 @@ app.post("/api/report", async (req, res) => {
         success: false,
         error: "Missing required fields (id, finder_email)",
       });
+    }
+
+    // Proxy to Supabase Edge Function (avoids browser CORS issues)
+    const FUNCTION_URL =
+      "https://hzxivuuuwqgmeiesvvrny.supabase.co/functions/v1/report-found";
+
+    const ANON_KEY = "sb_publishable_PES5RNt9Zt9r6af-r7j47g_dMds_iAd";
+
+    const r = await fetch(FUNCTION_URL, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        apikey: ANON_KEY,
+        Authorization: "Bearer " + ANON_KEY,
+      },
+      body: JSON.stringify({
+        id: cleanId,
+        finder_name,
+        finder_email: cleanEmail,
+        message,
+      }),
+    });
+
+    const text = await r.text();
+    let j;
+    try {
+      j = JSON.parse(text);
+    } catch {
+      return res.status(500).json({
+        success: false,
+        error: "Edge function returned non-JSON: " + text.slice(0, 200),
+      });
+    }
+
+    return res.status(r.status).json(j);
+  } catch (e) {
+    return res.status(500).json({ success: false, error: e.message });
+  }
+});
     }
 
     if (!supabaseAdmin) {
